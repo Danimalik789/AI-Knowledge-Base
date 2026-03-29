@@ -71,3 +71,57 @@ export async function createNoteAction(formData: FormData) {
         return { success: false, error: "Failed to create note." };
     }
 }
+
+export async function searchNotesAction(query: string) {
+    if (!query) return [];
+
+    try {
+        await connectToDatabase();
+
+        // 1. Convert user's search query into an embedding vector
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-embedding-001:embedContent?key=${process.env.GEMINI_API_KEY}`;
+        const aiResponse = await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                model: 'models/gemini-embedding-001',
+                content: { parts: [{ text: query }] }
+            })
+        });
+        
+        const data = await aiResponse.json();
+        
+        if (data.error) {
+            console.error("Gemini API Error:", data.error);
+            return [];
+        }
+
+        const queryVector = data.embedding.values;
+
+        // 2. Perform Vector Search using MongoDB Aggregate
+        const notes = await Note.aggregate([
+            {
+                $vectorSearch: {
+                    index: "vector_index", 
+                    path: "embedding",
+                    queryVector: queryVector,
+                    numCandidates: 100, 
+                    limit: 10 
+                }
+            },
+            {
+                $project: {
+                    title: 1,
+                    content: 1,
+                    createdAt: 1,
+                    score: { $meta: "vectorSearchScore" } // Includes AI confidence match
+                }
+            }
+        ]);
+
+        return JSON.parse(JSON.stringify(notes));
+    } catch (error) {
+        console.error("Search Error:", error);
+        return [];
+    }
+}
