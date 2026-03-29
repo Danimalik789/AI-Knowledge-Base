@@ -102,7 +102,7 @@ export async function searchNotesAction(query: string) {
         const notes = await Note.aggregate([
             {
                 $vectorSearch: {
-                    index: "vector_index", 
+                    index: "vector_index_1", 
                     path: "embedding",
                     queryVector: queryVector,
                     numCandidates: 100, 
